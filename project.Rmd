@@ -1,0 +1,100 @@
+---
+title: "Qualitative Activity of Weight Lifting Exercises"
+author: "Lourdes Alejandra Hernández Bethencourt"
+output: html_document
+---
+
+
+## Summary
+The goal in this study is to predict the manner in which the participants did weight lifting exercises.  
+We'll use data from accelerometers on the belt, forearm, arm, and dumbell of 6
+subjects, who were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  
+The data come from this source:  
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises.  
+After cleaning data and removing redundant features, we build a random forest model consisting of 13 predictors which predict our outcome variable 'classe' with an accuracy of 91% and a Kappa statistic=0.88.
+
+
+## Load and cleaning data
+First of all we load training data and have a look, taking into account the description given by the authors.  
+We need the original data to be located at the working directory and the "caret" and "tree" packages must be installed.  
+We are going to consider as missing values "NA", "#DIV/0!" and "".  
+```{r,eval=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+library(caret)
+training<-read.csv("./pml-training.csv",header=TRUE,sep=",",na.strings=c("NA","#DIV/0!",""))
+dim(training)
+```
+
+Let's take a look at the 160 variables.
+```{r,eval=TRUE,echo=TRUE,results='hide'}
+head(training)
+```
+
+We can remove summary columns, which have a lot of NA's values.  
+We might as well eliminate those variables which just give us information to identify the subject, window and time.  
+This way our training set finally contains 53 variables (52 predictors and our outcome variable 'classe').
+```{r,eval=TRUE,echo=TRUE,results='hide'}
+training<-training[,-grep("kurtosis",colnames(training))]
+training<-training[,-grep("skewness",colnames(training))]
+training<-training[,-grep("max",colnames(training))]
+training<-training[,-grep("min",colnames(training))]
+training<-training[,-grep("amplitude",colnames(training))]
+training<-training[,-grep("var",colnames(training))]
+training<-training[,-grep("stddev",colnames(training))]
+training<-training[,-grep("avg",colnames(training))]
+training<-training[,-c(1:7)]
+dim(training)
+head(training)
+summary(training)
+```
+
+
+## Data partitioning
+We're going to use just the 10% of our training set to build the model (there are 19622 records and takes a lot of time to run 'train' command).  
+```{r,eval=TRUE,echo=TRUE,results='hide'}
+set.seed(123)
+inTrain<-createDataPartition(y=training$classe,p=0.1,list=FALSE)
+trn<-training[inTrain,]
+tst<-training[-inTrain,]
+dim(trn)
+dim(tst)
+```
+
+
+## Features selection
+In order to select non-redundant features, we study the correlation between them.  
+30 out of 52 predictors are highly correlated (abs(cor)>0.8).
+```{r,eval=TRUE,echo=TRUE,results='hide'}
+m<-abs(cor(trn[,-53]))
+diag(m)<-0
+which(m>0.8,arr.ind=T)
+```
+
+
+## Dimension reduction
+To select the best predictors we build a tree model on the trn subset, getting 13 out of 52 features.
+```{r,eval=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+set.seed(123)
+library(tree)
+summary(tree(classe~.,data=trn))
+```
+
+
+## Model building
+We build a random forest model on the trn subset, including just the 13 selected predictors of the previous step.  
+We achieve with this model an accuracy of 91% and a Kappa statistic=0.88.
+```{r,eval=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+set.seed(123)
+modFit<-train(classe~roll_belt+pitch_forearm+roll_forearm+magnet_dumbbell_x+magnet_forearm_y+gyros_dumbbell_x+yaw_belt+magnet_dumbbell_y+magnet_dumbbell_z+accel_dumbbell_y+pitch_belt+magnet_forearm_z+accel_forearm_x,method="rf",prox=TRUE,data=trn)
+modFit
+```
+
+
+## Model evaluation
+We evaluate the rf model on the tst subset (90% remaining of training set), getting a 94% of well-classified observations.
+```{r,eval=TRUE,echo=TRUE,warning=FALSE,message=FALSE}
+pred<-predict(modFit,tst)
+tst$predRight<-pred==tst$classe
+table(pred,tst$classe)
+```
+
+
